@@ -5,10 +5,13 @@ import { LocationService } from './location.service';
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: 'https://test-maps-imvz.onrender.com',  // Cambia esta URL según la necesidad
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['*'],
+    credentials: true,
   },
   namespace: '/location',
-  transports: ['websocket']
+  transports: ['websocket'],
 })
 export class LocationGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
