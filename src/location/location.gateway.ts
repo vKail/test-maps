@@ -5,13 +5,13 @@ import { LocationService } from './location.service';
 
 @WebSocketGateway({
   cors: {
-    origin: 'https://test-maps-imvz.onrender.com',  // Cambia esta URL según la necesidad
+    origin: '*',
     methods: ['GET', 'POST'],
-    allowedHeaders: ['*'],
-    credentials: true,
+    credentials: true
   },
   namespace: '/location',
-  transports: ['websocket'],
+  transports: ['websocket', 'polling']
+
 })
 export class LocationGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -27,7 +27,8 @@ export class LocationGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   handleConnection(client: Socket) {
     this.logger.log(`Cliente conectado: ${client.id}`);
-    // Emitir mensaje de bienvenida para confirmar conexión
+    // Configurar el cliente para recibir mensajes raw
+    client.on('message', this.handleRawMessage.bind(this, client));
     client.emit('connected', { message: 'Conectado al servidor de ubicación' });
   }
 
@@ -35,49 +36,93 @@ export class LocationGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.logger.log(`Cliente desconectado: ${client.id}`);
   }
 
+  private async handleRawMessage(client: Socket, message: any) {
+    this.logger.debug(`Mensaje raw recibido: ${JSON.stringify(message)}`);
+    try {
+      const payload = typeof message === 'string' ? JSON.parse(message) : message;
+      await this.processLocation(client, payload);
+    } catch (error) {
+      this.logger.error(`Error procesando mensaje raw: ${error.message}`);
+      client.emit('error', { message: error.message });
+    }
+  }
+
   @SubscribeMessage('updateLocation')
   async handleLocation(client: Socket, payload: any) {
-    this.logger.debug('Payload recibido:', JSON.stringify(payload));
-    
-    // Verificar la estructura del payload
-    if (!payload || !payload.data) {
-      this.logger.error('Payload inválido:', payload);
-      client.emit('locationError', {
-        success: false,
-        error: 'Estructura de payload inválida'
-      });
-      return;
-    }
+    this.logger.debug(`Evento updateLocation recibido: ${JSON.stringify(payload)}`);
+    return this.processLocation(client, payload);
+  }
 
+  private async processLocation(client: Socket, payload: any) {
     try {
-      const locationData = payload.data;
+      // Extraer los datos de ubicación
+      const locationData = this.extractLocationData(payload);
+      
+      if (!locationData) {
+        throw new Error('Datos de ubicación no válidos');
+      }
+
       this.logger.log(`Procesando ubicación: ${JSON.stringify(locationData)}`);
       
       const savedLocation = await this.locationService.saveLocation(locationData);
       
       this.logger.log(`Ubicación guardada: ${JSON.stringify(savedLocation)}`);
       
-      client.emit('locationSaved', {
+      const response = {
         success: true,
         data: savedLocation
-      });
+      };
+
+      client.emit('locationSaved', response);
 
       return {
         event: 'locationUpdated',
         data: savedLocation
       };
+
     } catch (error) {
       this.logger.error(`Error al procesar ubicación: ${error.message}`);
-      
-      client.emit('locationError', {
+      const errorResponse = {
         success: false,
         error: error.message
-      });
+      };
+      client.emit('locationError', errorResponse);
+      return errorResponse;
+    }
+  }
 
+  private extractLocationData(payload: any): any {
+    this.logger.debug(`Extrayendo datos de ubicación de: ${JSON.stringify(payload)}`);
+    
+    // Si el payload es un objeto con los campos directamente
+    if (payload.latitud && payload.longitud) {
       return {
-        event: 'locationError',
-        error: error.message
+        latitud: Number(payload.latitud),
+        longitud: Number(payload.longitud),
+        hora: payload.hora || new Date().toISOString()
       };
     }
+    
+    // Si el payload tiene un campo 'data'
+    if (payload.data) {
+      const data = payload.data;
+      return {
+        latitud: Number(data.latitud),
+        longitud: Number(data.longitud),
+        hora: data.hora || new Date().toISOString()
+      };
+    }
+
+    // Si el payload tiene un campo 'event' (formato común en WebSockets)
+    if (payload.event === 'updateLocation' && payload.data) {
+      const data = payload.data;
+      return {
+        latitud: Number(data.latitud),
+        longitud: Number(data.longitud),
+        hora: data.hora || new Date().toISOString()
+      };
+    }
+
+    return null;
   }
 }

@@ -11,10 +11,10 @@ export class LocationService {
     try {
       this.logger.debug(`Intentando guardar ubicación: ${JSON.stringify(locationData)}`);
 
-      // Formatear los datos según el esquema de la tabla
+      // Asegurarse de que los números son enteros
       const locationToSave = {
-        latitud: Math.round(locationData.latitud), // Convertir a entero ya que el esquema usa int8
-        longitud: Math.round(locationData.longitud), // Convertir a entero ya que el esquema usa int8
+        latitud: Math.round(Number(locationData.latitud)),
+        longitud: Math.round(Number(locationData.longitud)),
         hora: new Date(locationData.hora).toISOString()
       };
 
@@ -23,15 +23,20 @@ export class LocationService {
       const { data, error } = await supabase
         .from('Expo')
         .insert([locationToSave])
-        .select();
+        .select('*')
+        .single();
 
       if (error) {
         this.logger.error(`Error de Supabase: ${JSON.stringify(error)}`);
         throw new Error(`Error al guardar ubicación: ${error.message}`);
       }
 
+      if (!data) {
+        throw new Error('No se recibieron datos después de la inserción');
+      }
+
       this.logger.log(`Ubicación guardada exitosamente: ${JSON.stringify(data)}`);
-      return data[0] as Location;
+      return data as Location;
 
     } catch (error) {
       this.logger.error(`Error en saveLocation: ${error.message}`);
