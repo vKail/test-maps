@@ -6,9 +6,11 @@ import { LocationService } from './location.service';
 @WebSocketGateway({
   cors: {
     origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true
   },
   namespace: '/location',
-  transports: ['websocket']
+  transports: ['websocket', 'polling']
 })
 export class LocationGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
