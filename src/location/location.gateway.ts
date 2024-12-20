@@ -11,6 +11,7 @@ import { LocationService } from './location.service';
   },
   namespace: '/location',
   transports: ['websocket', 'polling']
+
 })
 export class LocationGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
